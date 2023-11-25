@@ -3,5 +3,5 @@
     "board": "esp32:esp32:nodemcu-32s",
     "port": "COM11",
     "programmer": "esptool",
-    "sketch": "test.ino"
+    "sketch": "ETL_aws.ino"
 }

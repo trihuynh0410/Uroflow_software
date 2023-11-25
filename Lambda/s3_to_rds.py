@@ -3,6 +3,7 @@ import pandas as pd
 import boto3
 import os
 import tempfile
+from sqlalchemy import create_engine
 
 s3_client = boto3.client('s3')
 
@@ -42,6 +43,9 @@ def clean_downloaded_file(file_path):
     print('Temporary file deleted')
 
 def sanitize_table_name(name):
+    # Add a prefix if the name starts with a digit
+    if name[0].isdigit():
+        name = "subject_" + name
     sanitized_name = name.replace(" ", "_").replace("-", "_")
     return sanitized_name
 
@@ -61,19 +65,15 @@ def lambda_handler(event, context):
 
         df = process_file(temp_file_path)
 
-        clean_downloaded_file(temp_file_path)
         dbname = os.getenv('dbname')
         host = os.getenv('host')
         user = os.getenv('user')
         password = os.getenv('password')
-        connection = psycopg2.connect(dbname = dbname,
-                                       host = host,
-                                       port = '5432',
-                                       user = user,
-                                       password = password)
-        df.to_sql(table_name, connection, if_exists='replace')
-        if connection is not None:
-            connection.close()
+        database_url = f'postgresql+psycopg2://{user}:{password}@{host}/{dbname}'
+        engine = create_engine(database_url)
+        
+        df.to_sql(name = table_name, con = engine, if_exists='replace')
+        clean_downloaded_file(temp_file_path)
 
     except Exception as e:
         print('Error:', str(e))
