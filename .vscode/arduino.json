@@ -2,7 +2,7 @@
     "port": "COM11",
     "configuration": "FlashFreq=80,UploadSpeed=115200,DebugLevel=none,EraseFlash=none",
     "board": "esp32:esp32:nodemcu-32s",
-    "sketch": "test\\test.ino",
+    "sketch": "ETL_aws\\ETL_aws.ino",
     "programmer": "esptool",
     "arduino.additionalUrls": [
         "http://arduino.esp8266.com/stable/package_esp8266com_index.json",
