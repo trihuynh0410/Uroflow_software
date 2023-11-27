@@ -65,19 +65,16 @@ def lambda_handler(event, context):
         for signal_id in df['signal_id'].unique():
             cursor = conn.cursor()
         
-            # Check if the placeholder patient exists
             check_patient_query = "SELECT 1 FROM Patients WHERE patient_id = %s"
             placeholder_patient_id = 1
             cursor.execute(check_patient_query, (placeholder_patient_id,))
             patient_exists = cursor.fetchone()
         
-            # If not, insert a temporary patient record
             if not patient_exists:
                 insert_patient_query = "INSERT INTO Patients (patient_id, name, age) VALUES (%s, 'Temporary Name', 0)"
                 cursor.execute(insert_patient_query, (placeholder_patient_id,))
                 conn.commit()
         
-            # Then proceed with your existing logic
             query = "SELECT 1 FROM Signals WHERE signal_id = %s"
             cursor.execute(query, (signal_id,))
             result = cursor.fetchone()

@@ -54,8 +54,6 @@ void uploadFileToS3() {
         }
 
         http.end(); // End the HTTP connection
-
-        // Optionally, add a delay between retries
         delay(1000); // Delay for 1 second before retrying
     }
 }
