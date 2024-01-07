@@ -6,11 +6,19 @@ from datetime import datetime
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from fastapi.middleware.cors import CORSMiddleware
 
 POSTGRESQL_URL = os.environ["POSTGRESQL_URL"]
 EXPIRE_TIME = int(os.environ["EXPIRE_TIME"])
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 handler = Mangum(app)
 
 class Patient(BaseModel):
@@ -36,7 +44,7 @@ def fetch_patient_info():
 def fetch_signal_metadata(patient_id: int):
     with psycopg2.connect(POSTGRESQL_URL) as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM signals WHERE patient_id = %s", (patient_id,))
+            cur.execute("SELECT signal_id, patient_id FROM signals WHERE patient_id = %s", (patient_id,))
             signal_meta = cur.fetchall()
     return signal_meta
 
@@ -84,6 +92,61 @@ def add_patient(patient: Patient):
             cur.execute("INSERT INTO patients (patient_id, name, dob, gender) VALUES (%s, %s, %s, %s)", 
                         (patient_id, patient.name, dob, patient.gender))
     return {"message": "Patient added successfully"}
+
+@app.put("/patient/modify/{patient_id}")
+def modify_patient(patient_id: int, patient: Patient):
+    update_fields = {key: value for key, value in patient.model_dump().items() if value is not None}
+    if not update_fields:
+        return {"message": "No fields to update"}
+
+    with psycopg2.connect(POSTGRESQL_URL) as conn:
+        with conn.cursor() as cur:
+            for key, value in update_fields.items():
+                if key == 'dob':
+                    value = datetime.strptime(value, "%Y-%m-%d").date()
+                cur.execute(f"UPDATE patients SET {key} = %s WHERE patient_id = %s", (value, patient_id))
+    return {"message": "Patient information updated successfully"}
+
+@app.delete("/patient/delete/{patient_id}")
+def delete_patient(patient_id: int):
+    with psycopg2.connect(POSTGRESQL_URL) as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("SELECT signal_id FROM signals WHERE patient_id = %s", (patient_id,))
+            signal_ids = [row[0] for row in cur.fetchall()]
+
+            for signal_id in signal_ids:
+                cur.execute("DELETE FROM time_series_data WHERE signal_id = %s", (signal_id,))
+
+            cur.execute("DELETE FROM signals WHERE patient_id = %s", (patient_id,))
+
+            cur.execute("DELETE FROM patients WHERE patient_id = %s", (patient_id,))
+
+    return {"message": "Patient and related data deleted successfully"}
+
+@app.put("/signal/activate/{patient_id}")
+def activate_signals(patient_id: int):
+    with psycopg2.connect(POSTGRESQL_URL) as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM signals WHERE signal_id = 1")
+            
+            cur.execute("UPDATE signals SET status = 0")
+            
+            cur.execute("SELECT 1 FROM signals WHERE patient_id = %s", (patient_id,))
+            has_signals = cur.fetchone() is not None
+            
+            if has_signals:
+                cur.execute("UPDATE signals SET status = 1 WHERE patient_id = %s", (patient_id,))
+            else:
+                cur.execute("INSERT INTO signals (signal_id, patient_id, status) VALUES (1, %s, 1)", (patient_id,))
+            
+            conn.commit()
+    return {"message": "Signals activated for patient"}
+
+
+
+
+
 
 
 

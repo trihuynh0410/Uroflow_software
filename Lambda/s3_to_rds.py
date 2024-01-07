@@ -37,9 +37,9 @@ def lambda_handler(event, context):
             average_flow_rate = voided_volume / max(fr_time)
             time_to_max_flow_rate = time[np.argmax(flow_rate)] - time[0]
             flow_time = max(time)
-            df.loc[i, ["volume", "flow", "median volume", "voided volume",
-                       "max flow rate", "avg flow rate", 
-                       "time to max flow rate", "flow time"]] = [volume_string, flow_rate_string, median_volume, voided_volume, max_flowrate, average_flow_rate, time_to_max_flow_rate, flow_time]
+            df.loc[i, ["volume", "flow", "median_volume", "voided_volume",
+                       "max_flow_rate", "avg_flow_rate", 
+                       "time_to_max_flow_rate", "flow_time"]] = [volume_string, flow_rate_string, median_volume, voided_volume, max_flowrate, average_flow_rate, time_to_max_flow_rate, flow_time]
 
         insert_to_db(df)
 

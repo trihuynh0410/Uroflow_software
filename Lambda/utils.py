@@ -118,15 +118,9 @@ def insert_to_db(df):
     for signal_id in df['signal_id'].unique():
         cursor = conn.cursor()
     
-        check_patient_query = "SELECT 1 FROM Patients WHERE patient_id = %s"
-        placeholder_patient_id = 1
-        cursor.execute(check_patient_query, (placeholder_patient_id,))
-        patient_exists = cursor.fetchone()
-    
-        if not patient_exists:
-            insert_patient_query = "INSERT INTO Patients (patient_id, name, dob, gender) VALUES (%s, 'Temporary Name', '2002-10-04', 0)"
-            cursor.execute(insert_patient_query, (placeholder_patient_id,))
-            conn.commit()
+        get_patient_query = "SELECT patient_id FROM Signals WHERE status = 1"
+        cursor.execute(get_patient_query)
+        patient_id = cursor.fetchone()[0]
     
         query = "SELECT 1 FROM Signals WHERE signal_id = %s"
         cursor.execute(query, (signal_id,))
@@ -134,11 +128,18 @@ def insert_to_db(df):
     
         if result is None:
             insert_query = "INSERT INTO Signals (signal_id, patient_id) VALUES (%s, %s)"
-            cursor.execute(insert_query, (signal_id, placeholder_patient_id))
+            cursor.execute(insert_query, (signal_id, patient_id))
             conn.commit()
     
         cursor.close()
     
+    with conn.cursor() as cur:
+        delete_dummy_query = "DELETE FROM Signals WHERE signal_id = 1"
+        cur.execute(delete_dummy_query)
+        conn.commit()
+
     conn.close()
 
     df.to_sql(name = 'time_series_data', con = engine, if_exists='append', index=False)
+
+
