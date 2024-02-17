@@ -4,6 +4,7 @@ import tempfile
 import psycopg2
 import pandas as pd 
 import boto3
+import time
 from sqlalchemy import create_engine
 from utils import *
 

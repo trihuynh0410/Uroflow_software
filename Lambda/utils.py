@@ -5,6 +5,7 @@ import psycopg2
 import numpy as np
 import pandas as pd 
 import boto3
+import time
 from sqlalchemy import create_engine
 
 def download_file_from_s3(bucket, key, file_path, s3_client):
@@ -22,7 +23,7 @@ def create_df(file_path):
     current_signal_id = None
     for line in lines:
         if line.startswith('#,'):
-            current_signal_id = line.strip().split(',')[1]
+            current_signal_id = line.strip().split(',')[1] 
             if current_signal_id not in data:
                 data[current_signal_id] = []
         else:
@@ -62,7 +63,7 @@ def input_to_df(content, index, col_name, df):
 
 def adjust_timestamps(data_str, window_size):
     data_list = data_str.split()
-
+    data_list = [line for line in data_list if line.count(',') == 1]
     timestamps = [float(pair.split(',')[0]) for pair in data_list]
     values = [float(pair.split(',')[1]) for pair in data_list]
 

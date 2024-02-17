@@ -1,100 +1,222 @@
+#include <Wire.h>
+#include <HX711.h>
+#include <CircularBuffer.h>
+#include <ArduinoJson.h>
+#include "RTClib.h"
+#include "FS.h"
+#include "SPI.h"
+#include <Preferences.h>
+#include "ArduinoTimer.h"
 #include <HTTPClient.h>
-#include <WiFiClientSecure.h>
 #include "WiFi.h"
-#include <SPIFFS.h>
 #include "sensitive.h"
+#include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
 
-WiFiClientSecure net = WiFiClientSecure();
+#ifdef DEBUG
+#define DEBUG_PRINT(x)  Serial.println (x)
+#define DEBUG_PRINF(x)  Serial.printf (x)
+#else
+#define DEBUG_PRINT(x)
+#define DEBUG_PRINF(x)
+#endif
+CircularBuffer<long, 80> bufferData;
+CircularBuffer<long, 80> bufferTime;
 
-void uploadFileToS3() {
-    File root = SPIFFS.open("/");
-    File file = root.openNextFile();
-    if (!file) {
-        Serial.println("Failed to open file for reading");
-        return;
-    }
+//File file ;
+File filedata ;
 
-    String url = API_URL + String(AWS_S3_BUCKET) + String(file.name());
-    Serial.println("Uploading to: " + url);
+//holds the current upload
+//File fsUploadFile;
+RTC_DS3231 rtc;
+HX711 scale;
+#define FILESYSTEM SPIFFS
+#if FILESYSTEM == SPIFFS
+#include <SPIFFS.h>
+#endif
+#define LEDBLU 04
+#define LEDGRE 16
+#define LEDRED 17
+#define BATTERY 34
+#define DOUT 32
+#define CLK 33
+#define SWITCHWIFI 25
+#define BATTERY_PIN 34
 
-    HTTPClient http;
+int count = 0;
+int noChangeCount = 0;
+bool record = false;
+int initLoadCell = 0;
+Preferences preferences;
 
-    // bool numberFoundd = false;
-    // String fileContent;
-    // while (file.available()){
-    //     String line = file.readStringUntil('\n');
-    //     fileContent += line + "\n"; // Append each line to the file content
-    //     if (line.indexOf("113303") >= 0) {
-    //         numberFoundd = true;
-    //         Serial.println("Number 113303 found in the line.");
-    //     }
-    // }
-    // bool numberFound = false;
-    // if (fileContent.indexOf("113303") >= 0) {
-    //     numberFound = true;
-    //     Serial.println("Number 113303 found in the file.");
-    // } else {
-    //     Serial.println("Number 113303 not found in the file.");
-    // }
+#define error(msg) sd.errorHalt(F(msg))
 
-    for (int attempt = 0; attempt < 3; attempt++) {
-        http.begin(url); // Begin the HTTP request
-        http.addHeader("Content-Type", "text/csv");
+// bool fileUploaded = false; // Add a flag to indicate whether the file has been uploaded
 
-        int httpResponseCode = http.sendRequest("PUT", &file, file.size());
+void uploadFileToS3()
+{
+    if (WiFi.status() == WL_CONNECTED) { // Check WiFi connection and whether the file has been uploaded
 
-        if (httpResponseCode > 0) {
-            Serial.println("Response code: " + String(httpResponseCode));
-            Serial.println(http.getString());
-            if (httpResponseCode == 200) {
-                break; // Break the loop if the response is 200
-            }
-        } else {
-            Serial.println("Error on sending file: " + String(httpResponseCode));
+        File root = SPIFFS.open("/");
+        File file = root.openNextFile();
+        if (!file) {
+            Serial.println("Failed to open file for uploading");
+            return;
         }
+        String url = API_URL + String(AWS_S3_BUCKET) + String(file.name());
+        Serial.println("Uploading to: " + url);
 
-        http.end(); // End the HTTP connection
-        delay(1000); // Delay for 1 second before retrying
+        HTTPClient http;
+
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            http.begin(url); 
+            http.addHeader(F("Content-Type"), F("text/csv"));
+
+            int httpResponseCode = http.sendRequest("PUT", &file, file.size());
+
+            if (httpResponseCode > 0)
+            {
+                Serial.print(F("Response code: "));
+                Serial.println(httpResponseCode);
+                Serial.println(http.getString());
+                if (httpResponseCode == 200)
+                {
+                    // fileUploaded = true; // Set the flag to true after successful upload
+                    Serial.println("upload success");
+                    break; 
+                }
+            }
+            else
+            {
+                Serial.print(F("Error on sending file: "));
+                Serial.println(httpResponseCode);
+            }
+            http.end();  
+            delay(200); 
+        }
+        String deletefile = "/" + String(file.name());
+        file.close(); // Close the file
+        if (SPIFFS.remove(deletefile)) { // Delete the file
+          Serial.println("File deleted after upload");
+        } else {
+          Serial.println("Error deleting file");
+        }
+        Serial.println("Wait to setup for uroflow");
+        lightYellow();
+        delay(10000);
     }
 }
-
-
-String extractFileName(String path) {
-  int lastIndex = path.lastIndexOf('/');
-  return path.substring(lastIndex + 1);
-}
-
-
-void setup(){
-    Serial.begin(115200);
-    delay(1000);
-    if (!SPIFFS.begin(true)) {
-        Serial.println("An error has occurred while mounting SPIFFS");
-        return;
+void setup() {
+  String BTname = "IUROF";
+  preferences.begin("iurof", false);
+  pinMode(LEDBLU, OUTPUT);
+  pinMode(LEDGRE, OUTPUT);
+  pinMode(LEDRED, OUTPUT);
+  lightWhite();
+  pinMode(SWITCHWIFI, INPUT_PULLUP);
+  Serial.begin(115200);
+  spiffsSetup();
+  RTCsetup();
+  int pinValue = analogRead(BATTERY_PIN);
+  if (pinValue < 2200) {
+    Serial.println("Low battery");
+    for (int i = 0; i < 5; i++) {
+      lightYellow();
+      delay(200);
+      lightWhite();
+      delay(200);
     }
 
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    // uint32_t notConnectedCounter = 0;
-    // while (WiFi.status() != WL_CONNECTED) {
-    //     delay(100);
-    //     Serial.println("Wifi connecting...");
-    //     notConnectedCounter++;
-    //     if(notConnectedCounter > 150) { // Reset board if not connected after 15s
-    //         Serial.println("Resetting due to Wifi not connecting...");
-    //         ESP.restart();
-    //     }
-    // }
-    Serial.println("Connecting to Wi-Fi");
-    while (WiFi.status() != WL_CONNECTED)
-    {
-    delay(500);
-    Serial.print(".");
+  } else {
+    delay(2000);
+  }
+  loadCellSetup();
+  delay(1000);
+  //  FSBrowserSetup();
+  lightBlue();
+
+  WiFi.mode(WIFI_STA);
+  WiFiManager wm;
+
+  // wm.resetSettings();
+
+  // wm.setConfigPortalBlocking(false);
+  bool res;
+
+  res = wm.autoConnect("UroflowWifi"); // anonymous ap
+  Serial.println("check before check res");
+  if(!res) {
+    Serial.println("Failed to connect");
+    // ESP.restart();
+  } 
+  else {
+    Serial.println("connected...yeey :)");
+  }
+
+}
+void loop() {
+  int j = 0;
+  if (true) {
+    lightBlue();
+    bufferData.push(  scale.get_units() * 10);
+    bufferTime.push(  millis());
+        Serial.println("Buffer data (not record) is");
+        Serial.println(-bufferData[0]);
+    //Ghi lại 80 data đầu tiên,tương đương với 1s
+    if (((-bufferData[bufferData.size() - 1]) - (-bufferData[0]) > 80) && (bufferData.size() > 50)) {
+        Serial.println("Buffer data initial(not record) is");
+        Serial.println(-bufferData[0]);
+        Serial.println("COndition value is");
+        Serial.println(-bufferData[bufferData.size() - 1] + bufferData[0]);
+      writeHeader();
+      record = true;
+      Serial.println("Record start");
+      lightGreen();
+      while (record) {
+        bufferData.push(scale.get_units() * 10);
+        bufferTime.push(millis());
+        dataWrite(bufferTime[0], -bufferData[0]);
+        Serial.println("Buffer data (record 0) is");
+        Serial.println(-bufferData[0]);
+        Serial.println("Buffer data (record 1) is");
+        Serial.println(-bufferData[bufferData.size() - 1]);
+        Serial.println("Difference is");
+        Serial.println(-bufferData[bufferData.size() - 1] + bufferData[0]);
+        Serial.println("check true before after");
+        Serial.println(-bufferData[bufferData.size() - 1] + bufferData[0] < 30);
+        //         Serial.println("check true 500");
+        // Serial.println(-bufferData[0] < (initLoadCell + 500));
+        count++;
+        if (count % 100 == 0) {
+          filedata.flush();
+          // Serial.println("saved something");
+//          Cmds.Process();
+        }
+        //        DEBUG_PRINT("0");
+        // DEBUG_PRINT(bufferData[bufferData.size()]);
+        //                DEBUG_PRINT(bufferTime[bufferTime.size() - 1]);
+        //        Serial.println(analogRead(BATTERY_PIN));
+        if (-bufferData[bufferData.size() - 1] + bufferData[0] < 30) {
+          noChangeCount++;    //  
+          Serial.println(noChangeCount);
+          if (noChangeCount > 500 && -bufferData[0] < (initLoadCell + 500)) {
+            record = false;
+            lightBlue();
+            noChangeCount = 0;
+            closeFile();
+            Serial.println("Close file");
+            uploadFileToS3(); 
+          }
+        }
+      }
     }
-    Serial.println("Wifi connected");
-    uploadFileToS3();
+  } else {
+    lightYellow();    
+    //Wifi mode
+//        server.handleClient();
+    //    DEBUG_PRINT("1");
+    delay(2);//allow the cpu to switch to other tasks
+  }
+
 }
 
-void loop(){
-
-}

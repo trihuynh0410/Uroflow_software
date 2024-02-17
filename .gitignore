@@ -1,6 +1,9 @@
 ETL_aws/sensitive.h
 Backend/dependencies
 Backend/aws_lambda_artifact.zip
+Backend/requirements.txt
+Backend/dependencies.zip
 requirements.txt
 venv
 Lambda.zip
+.vscode

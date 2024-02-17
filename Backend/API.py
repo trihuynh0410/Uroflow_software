@@ -26,6 +26,9 @@ class Patient(BaseModel):
     dob: str
     gender: int
 
+class Comment(BaseModel):
+    comment: str
+
 def split_and_convert(data_str):
     data_list = data_str.split()
     time = [float(pair.split(',')[0]) for pair in data_list]
@@ -80,6 +83,7 @@ def fetch_times_series(signal_id: int):
         "avg_flow_rate": signal_data["avg_flow_rate"],
         "time_to_max_flow_rate": signal_data["time_to_max_flow_rate"],
         "flow_time": signal_data["flow_time"],
+        "comment": signal_data["comment"]
     }
     return res
 
@@ -95,7 +99,7 @@ def add_patient(patient: Patient):
 
 @app.put("/patient/modify/{patient_id}")
 def modify_patient(patient_id: int, patient: Patient):
-    update_fields = {key: value for key, value in patient.model_dump().items() if value is not None}
+    update_fields = {key: value for key, value in patient.dict().items() if value is not None}
     if not update_fields:
         return {"message": "No fields to update"}
 
@@ -143,9 +147,28 @@ def activate_signals(patient_id: int):
             conn.commit()
     return {"message": "Signals activated for patient"}
 
+@app.delete("/signal/delete/{signal_id}")
+def delete_signals(signal_id: int):
+    with psycopg2.connect(POSTGRESQL_URL) as conn:
+        with conn.cursor() as cur:
 
+            cur.execute("DELETE FROM time_series_data WHERE signal_id = %s", (signal_id,))
 
+            cur.execute("DELETE FROM signals WHERE signal_id = %s", (signal_id,))
 
+    return {"message": "Signal and related data deleted successfully"}
+
+@app.put("/signal/comment/{signal_id}")
+def modify_comment(
+    signal_id: int,
+    comment: Comment,
+    ):
+    with psycopg2.connect(POSTGRESQL_URL) as conn:
+        with conn.cursor() as cur:
+
+            cur.execute("UPDATE time_series_data SET comment = %s WHERE signal_id = %s", (comment.comment, signal_id))
+
+    return {"message": "Comment modified successfully"}
 
 
 

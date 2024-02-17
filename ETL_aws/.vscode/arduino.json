@@ -1,7 +1,7 @@
 {
     "configuration": "FlashFreq=80,UploadSpeed=921600,DebugLevel=none,EraseFlash=none",
     "board": "esp32:esp32:nodemcu-32s",
-    "port": "COM11",
+    "port": "COM16",
     "programmer": "esptool",
     "sketch": "ETL_aws.ino"
 }
